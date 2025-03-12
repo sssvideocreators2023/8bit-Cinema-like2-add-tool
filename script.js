@@ -9,7 +9,7 @@ progressBar.max = 100;
 document.querySelector(".container").appendChild(progressBar);
 
 // GitHub 上の JSON ファイルを読み込む（適宜パスを変更）
-const baseURL = "https://raw.githubusercontent.com/sssvideocreators2023/8bit-Cinema-like2-add-tool/main/"; 
+const baseURL = "https://sssvideocreators2023.github.io/8bit-Cinema-like2-add-tool/"; 
 Promise.all([
     fetch(baseURL + 'color_table_part1.json').then(response => response.json()),
     fetch(baseURL + 'color_table_part2.json').then(response => response.json())
