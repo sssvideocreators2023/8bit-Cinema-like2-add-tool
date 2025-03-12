@@ -1,5 +1,5 @@
 document.getElementById("fileInput").addEventListener("change", handleFile);
-document.getElementById("downloadBtn").addEventListener("click", downloadImage);
+document.getElementById("downloadBtn").addEventListener("click", downloadProcessed);
 
 let colorTable = {};
 let progressBar = document.createElement("progress");
@@ -8,13 +8,14 @@ progressBar.value = 0;
 progressBar.max = 100;
 document.querySelector(".container").appendChild(progressBar);
 
-// 2つのJSONファイルをロードし、データを統合
+// GitHub 上の JSON ファイルを読み込む（適宜パスを変更）
+const baseURL = "https://raw.githubusercontent.com/sssvideocreators2023/8bit-Cinema-like2-add-tool/main/"; 
 Promise.all([
-    fetch('color_table_part1.json').then(response => response.json()),
-    fetch('color_table_part2.json').then(response => response.json())
+    fetch(baseURL + 'color_table_part1.json').then(response => response.json()),
+    fetch(baseURL + 'color_table_part2.json').then(response => response.json())
 ]).then(([data1, data2]) => {
     colorTable = { ...data1, ...data2 };
-    console.log("カラーテーブルのロード完了", Object.keys(colorTable).length, "件のエントリ");
+    console.log("カラー変換データを読み込みました:", Object.keys(colorTable).length, "件");
 }).catch(error => console.error("JSONファイルの読み込みエラー:", error));
 
 function handleFile(event) {
@@ -23,8 +24,11 @@ function handleFile(event) {
 
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
+    const video = document.getElementById("video");
 
     if (file.type.startsWith("image/")) {
+        video.hidden = true;
+        canvas.hidden = false;
         const img = new Image();
         img.onload = () => {
             canvas.width = img.width;
@@ -33,6 +37,17 @@ function handleFile(event) {
             applyColorTransform(ctx, canvas.width, canvas.height);
         };
         img.src = URL.createObjectURL(file);
+    } else if (file.type.startsWith("video/")) {
+        canvas.hidden = true;
+        video.hidden = false;
+        video.src = URL.createObjectURL(file);
+        video.onloadeddata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        };
+        video.onplay = () => {
+            processVideo(video, canvas, ctx);
+        };
     }
 }
 
@@ -42,33 +57,28 @@ function applyColorTransform(ctx, width, height) {
     let totalPixels = width * height;
     let processedPixels = 0;
 
-    console.log("画像処理開始: ", width, "x", height, "ピクセル");
-
     for (let i = 0; i < data.length; i += 4) {
-        let r = data[i], g = data[i+1], b = data[i+2];
+        let r = data[i], g = data[i + 1], b = data[i + 2];
         let key = `${r},${g},${b}`;
 
-        if (colorTable.hasOwnProperty(key)) {
+        if (colorTable[key]) {
             let [newR, newG, newB] = colorTable[key].split(',').map(Number);
             data[i] = newR;
-            data[i+1] = newG;
-            data[i+2] = newB;
+            data[i + 1] = newG;
+            data[i + 2] = newB;
         } else {
             let nearestColor = findNearestColor(r, g, b);
             data[i] = nearestColor[0];
-            data[i+1] = nearestColor[1];
-            data[i+2] = nearestColor[2];
+            data[i + 1] = nearestColor[1];
+            data[i + 2] = nearestColor[2];
         }
 
         processedPixels++;
-        if (processedPixels % 1000 === 0) {
-            progressBar.value = (processedPixels / totalPixels) * 100;
-        }
+        progressBar.value = (processedPixels / totalPixels) * 100;
     }
 
     ctx.putImageData(imageData, 0, 0);
     progressBar.value = 100;
-    console.log("画像処理完了");
 }
 
 function findNearestColor(r, g, b) {
@@ -88,10 +98,48 @@ function findNearestColor(r, g, b) {
     return closestColor;
 }
 
-function downloadImage() {
+function processVideo(video, canvas, ctx) {
+    const stream = canvas.captureStream();
+    const mediaRecorder = new MediaRecorder(stream);
+    let chunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+            chunks.push(event.data);
+        }
+    };
+
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "converted_video.webm";
+        link.click();
+    };
+
+    function step() {
+        if (video.paused || video.ended) {
+            mediaRecorder.stop();
+            return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        applyColorTransform(ctx, canvas.width, canvas.height);
+        requestAnimationFrame(step);
+    }
+
+    mediaRecorder.start();
+    requestAnimationFrame(step);
+}
+
+function downloadProcessed() {
     const canvas = document.getElementById("canvas");
+    const video = document.getElementById("video");
     const link = document.createElement("a");
-    link.download = "converted_image.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+
+    if (!canvas.hidden) {
+        link.download = "converted_image.png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+    }
 }
